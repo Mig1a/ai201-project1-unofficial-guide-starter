@@ -12,7 +12,7 @@ st.caption("GMU Computer Science professor review Q&A grounded only in the manua
 st.warning("Answers are based only on the processed Rate My Professors PDF documents in this project.")
 
 question = st.text_input("Ask a question", placeholder="Which professor gives useful feedback?")
-model = st.text_input("LLM model", value=setting("LLM_MODEL", "gpt-4o-mini"))
+model = st.text_input("LLM model", value=setting("LLM_MODEL", "extractive"))
 
 if st.button("Submit", type="primary"):
     if not question.strip():

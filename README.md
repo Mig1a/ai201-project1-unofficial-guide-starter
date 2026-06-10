@@ -45,16 +45,17 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Then edit `.env` to select providers:
+Then edit `.env` to select providers. The default path is fully local and does not require OpenAI:
 
 ```txt
-EMBEDDING_PROVIDER=openai
-EMBEDDING_MODEL=text-embedding-3-small
-LLM_PROVIDER=openai
-LLM_MODEL=gpt-4o-mini
-VECTOR_STORE=chroma
-OPENAI_API_KEY=your_key_here
+EMBEDDING_PROVIDER=local_tfidf
+EMBEDDING_MODEL=local_tfidf
+LLM_PROVIDER=extractive
+LLM_MODEL=extractive
+VECTOR_STORE=json
 ```
+
+This local baseline uses TF-IDF-style sparse vectors stored in a JSON vector index and an extractive grounded answer generator. It is intended to be reproducible with no API key. You can switch to OpenAI, Ollama, ChromaDB, or Sentence Transformers by changing `.env` and installing the corresponding dependencies.
 
 For local generation with Ollama, set `LLM_PROVIDER=ollama`, choose an installed Ollama model, and set `OLLAMA_URL` if your server is not on the default local endpoint.
 
@@ -85,7 +86,15 @@ python scripts/embed.py
 
 ## Run The App
 
-This implementation uses Streamlit as the demo interface because it is lightweight and easy to present. A Flask, FastAPI, notebook, or command-line interface would also satisfy the assignment if it exposed query input, answer output, source attribution, and retrieved evidence.
+The simplest no-API demo is the command-line interface:
+
+```bash
+python scripts/query.py "Which professor explains difficult CS concepts clearly?"
+```
+
+This uses the local vector index and extractive answer generator.
+
+The project also includes a Streamlit interface, but it requires installing Streamlit:
 
 ```bash
 streamlit run app.py
@@ -114,12 +123,13 @@ EMBEDDING_MODEL=
 
 Implemented providers:
 
-- `openai` with `text-embedding-3-small` by default
+- `local_tfidf` by default for a no-API reproducible baseline
+- `openai` with models such as `text-embedding-3-small`
 - `sentence_transformers` for local models such as BGE, E5, or MiniLM when `sentence-transformers` is installed
 
 Alternatives considered include OpenAI embeddings, Sentence Transformers, BGE models, E5 models, Cohere embeddings, and Voyage embeddings.
 
-Default rationale: `text-embedding-3-small` is fast, relatively inexpensive, and strong enough for a small English student-review corpus. A local BGE or E5 model would reduce API dependency and improve offline reproducibility, but it requires local disk, memory, and model downloads. Larger API models may improve retrieval quality on subtle comparative questions but cost more and add latency. Multilingual support is not a major requirement for the current English corpus, but would matter if reviews in other languages were added.
+Default rationale: `local_tfidf` is free, reproducible, and requires no API key or model download, which makes it the safest baseline for the assignment demo. It is less semantically rich than OpenAI, BGE, E5, Cohere, or Voyage embeddings, so it may miss paraphrases. A local BGE or E5 model would improve retrieval quality while remaining offline, but it requires local disk, memory, and model downloads. API embedding models may improve subtle comparative retrieval but add cost, latency, and vendor dependency. Multilingual support is not a major requirement for the current English corpus, but would matter if reviews in other languages were added.
 
 ### LLM
 
@@ -132,12 +142,13 @@ LLM_MODEL=
 
 Implemented providers:
 
-- `openai` with `gpt-4o-mini` by default
+- `extractive` by default for a no-API grounded baseline
+- `openai` with models such as `gpt-4o-mini`
 - `ollama` for local generation through a running Ollama server
 
 Alternatives considered include OpenAI, Gemini, Claude, Ollama, and local HuggingFace models.
 
-Default rationale: `gpt-4o-mini` is a practical default for a class demo because it is low-latency, affordable, and reliable at following citation/grounding instructions. Ollama improves privacy and avoids API costs, but output quality and speed depend on the local model and hardware. Claude or Gemini could be strong alternatives if their APIs are preferred.
+Default rationale: `extractive` generation is not as fluent as an LLM, but it is maximally grounded because it builds the answer directly from retrieved review sentences and requires no API key. `gpt-4o-mini` is a practical optional model because it is low-latency, affordable, and reliable at following citation/grounding instructions. Ollama improves privacy and avoids API costs, but output quality and speed depend on the local model and hardware. Claude or Gemini could be strong alternatives if their APIs are preferred.
 
 ### Vector Store
 
@@ -147,9 +158,9 @@ Vector storage is configurable through:
 VECTOR_STORE=
 ```
 
-This implementation includes a ChromaDB adapter and stores local database files in `vectordb/`. Alternatives considered include FAISS, Pinecone, Weaviate, and Qdrant.
+This implementation includes a JSON local vector index by default and a ChromaDB adapter for richer vector storage. Alternatives considered include FAISS, Pinecone, Weaviate, and Qdrant.
 
-Default rationale: ChromaDB is simple to run locally and easy to reset for demos. FAISS would be faster and lighter for purely local retrieval, but requires more custom metadata handling. Pinecone, Weaviate, and Qdrant are stronger production choices for hosted scaling, access control, monitoring, and larger corpora, but they add operational setup that is unnecessary for this small project.
+Default rationale: the JSON vector index is dependency-free and easiest to reproduce. ChromaDB is still a good optional local vector database because it is simple to persist and reset. FAISS would be faster and lighter for local dense vectors, but requires more custom metadata handling. Pinecone, Weaviate, and Qdrant are stronger production choices for hosted scaling, access control, monitoring, and larger corpora, but they add operational setup that is unnecessary for this small project.
 
 ### Frameworks
 

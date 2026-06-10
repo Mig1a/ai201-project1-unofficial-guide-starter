@@ -68,11 +68,11 @@ The assignment does not require a specific embedding provider. The implementatio
 Current default:
 
 ```txt
-EMBEDDING_PROVIDER=openai
-EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_PROVIDER=local_tfidf
+EMBEDDING_MODEL=local_tfidf
 ```
 
-Why this default was chosen: it is fast, inexpensive, and strong enough for a small English review corpus. The corpus is short and mostly natural-language opinion text, so a general-purpose embedding model is appropriate.
+Why this default was chosen: it is local, free, reproducible, and requires no API key or model download. The corpus is short and mostly English review text, so a TF-IDF-style sparse embedding baseline is enough to demonstrate the full RAG pipeline, though it is weaker than dense semantic embeddings for paraphrases.
 
 Alternatives considered:
 
@@ -97,10 +97,10 @@ The assignment does not require a specific vector database. The implementation i
 Current default:
 
 ```txt
-VECTOR_STORE=chroma
+VECTOR_STORE=json
 ```
 
-Why this default was chosen: ChromaDB is easy to persist locally in `vectordb/`, simple to reset, and appropriate for a small demo corpus.
+Why this default was chosen: a JSON vector index is dependency-free, easy to inspect, and appropriate for a small demo corpus. The implementation also includes a ChromaDB adapter for richer local vector storage when dependencies are installed.
 
 Alternatives considered:
 
@@ -128,11 +128,11 @@ The assignment does not require a specific LLM. The implementation is configurab
 Current default:
 
 ```txt
-LLM_PROVIDER=openai
-LLM_MODEL=gpt-4o-mini
+LLM_PROVIDER=extractive
+LLM_MODEL=extractive
 ```
 
-Why this default was chosen: it is affordable, responsive, and good at following structured grounding and citation instructions for a class demo.
+Why this default was chosen: extractive generation requires no API key and stays tightly grounded because it quotes or summarizes retrieved review sentences directly. It is less fluent than an LLM, but it is reproducible and safe for the assignment demo.
 
 Alternatives considered:
 

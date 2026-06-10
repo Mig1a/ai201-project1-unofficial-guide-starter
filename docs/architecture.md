@@ -35,4 +35,4 @@ flowchart TD
 
 ## Configurable Adapters
 
-The current implementation defaults to OpenAI embeddings, OpenAI grounded generation, ChromaDB vector storage, optional LangChain splitting helpers, and a Streamlit UI. These are implementation choices, not assignment requirements. The architecture can support other embedding providers, vector databases, generation models, and query interfaces through the same ingestion, chunking, retrieval, grounding, attribution, and evaluation stages.
+The current implementation defaults to local TF-IDF-style embeddings, a JSON vector index, extractive grounded generation, optional LangChain splitting helpers, and both CLI and Streamlit query interfaces. These are implementation choices, not assignment requirements. The architecture can support other embedding providers, vector databases, generation models, and query interfaces through the same ingestion, chunking, retrieval, grounding, attribution, and evaluation stages.
