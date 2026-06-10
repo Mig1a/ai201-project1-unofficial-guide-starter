@@ -14,7 +14,7 @@ def main() -> None:
         count = build_vector_store(reset=True)
     except Exception as exc:
         raise SystemExit(str(exc)) from exc
-    print(f"Built ChromaDB vector store with {count} chunks in vectordb/.")
+    print(f"Built vector store with {count} chunks in vectordb/.")
 
 
 if __name__ == "__main__":

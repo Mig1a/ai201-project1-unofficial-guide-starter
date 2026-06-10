@@ -15,7 +15,7 @@ Students can ask questions such as:
 - Which professor has mixed or polarized reviews?
 - Which professor has reviews recommending office hours?
 
-The answer generator is instructed to use only retrieved chunks from the processed documents and cite the professor/document sources used.
+The system ingests documents, chunks them, embeds chunks into a vector store, retrieves relevant evidence, and generates grounded answers with source attribution. The implementation includes default technology choices, but the assignment does not require any specific vendor, model, framework, or database.
 
 ## Data Source
 
@@ -45,11 +45,18 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Then edit `.env`:
+Then edit `.env` to select providers:
 
 ```txt
+EMBEDDING_PROVIDER=openai
+EMBEDDING_MODEL=text-embedding-3-small
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4o-mini
+VECTOR_STORE=chroma
 OPENAI_API_KEY=your_key_here
 ```
+
+For local generation with Ollama, set `LLM_PROVIDER=ollama`, choose an installed Ollama model, and set `OLLAMA_URL` if your server is not on the default local endpoint.
 
 ## Run Ingestion
 
@@ -70,13 +77,15 @@ chunk_size = 500
 chunk_overlap = 100
 ```
 
-It uses `RecursiveCharacterTextSplitter`, embeds chunks with OpenAI `text-embedding-3-small`, and persists the ChromaDB vector database to `vectordb/`.
+The current default implementation uses LangChain's `RecursiveCharacterTextSplitter` when available, with a small built-in fallback splitter for reproducibility. Chunks include metadata for source file, professor, document type, chunk number, and total chunks.
 
 ```bash
 python scripts/embed.py
 ```
 
 ## Run The App
+
+This implementation uses Streamlit as the demo interface because it is lightweight and easy to present. A Flask, FastAPI, notebook, or command-line interface would also satisfy the assignment if it exposed query input, answer output, source attribution, and retrieved evidence.
 
 ```bash
 streamlit run app.py
@@ -90,15 +99,71 @@ The interface includes a question input, generated answer, cited source list, re
 python scripts/evaluate.py
 ```
 
-The evaluation script runs five test questions when dependencies, `vectordb/`, and `OPENAI_API_KEY` are available. If setup is incomplete, it still writes `docs/evaluation_report.md` with the test cases and the blocking setup error.
+The evaluation script runs five test questions when dependencies, a built vector store, and the selected provider credentials are available. If setup is incomplete, it still writes `docs/evaluation_report.md` with the test cases and the blocking setup error.
+
+## Configurable Technology Choices
+
+### Embeddings
+
+The embedding implementation is configurable through:
+
+```txt
+EMBEDDING_PROVIDER=
+EMBEDDING_MODEL=
+```
+
+Implemented providers:
+
+- `openai` with `text-embedding-3-small` by default
+- `sentence_transformers` for local models such as BGE, E5, or MiniLM when `sentence-transformers` is installed
+
+Alternatives considered include OpenAI embeddings, Sentence Transformers, BGE models, E5 models, Cohere embeddings, and Voyage embeddings.
+
+Default rationale: `text-embedding-3-small` is fast, relatively inexpensive, and strong enough for a small English student-review corpus. A local BGE or E5 model would reduce API dependency and improve offline reproducibility, but it requires local disk, memory, and model downloads. Larger API models may improve retrieval quality on subtle comparative questions but cost more and add latency. Multilingual support is not a major requirement for the current English corpus, but would matter if reviews in other languages were added.
+
+### LLM
+
+Grounded generation is configurable through:
+
+```txt
+LLM_PROVIDER=
+LLM_MODEL=
+```
+
+Implemented providers:
+
+- `openai` with `gpt-4o-mini` by default
+- `ollama` for local generation through a running Ollama server
+
+Alternatives considered include OpenAI, Gemini, Claude, Ollama, and local HuggingFace models.
+
+Default rationale: `gpt-4o-mini` is a practical default for a class demo because it is low-latency, affordable, and reliable at following citation/grounding instructions. Ollama improves privacy and avoids API costs, but output quality and speed depend on the local model and hardware. Claude or Gemini could be strong alternatives if their APIs are preferred.
+
+### Vector Store
+
+Vector storage is configurable through:
+
+```txt
+VECTOR_STORE=
+```
+
+This implementation includes a ChromaDB adapter and stores local database files in `vectordb/`. Alternatives considered include FAISS, Pinecone, Weaviate, and Qdrant.
+
+Default rationale: ChromaDB is simple to run locally and easy to reset for demos. FAISS would be faster and lighter for purely local retrieval, but requires more custom metadata handling. Pinecone, Weaviate, and Qdrant are stronger production choices for hosted scaling, access control, monitoring, and larger corpora, but they add operational setup that is unnecessary for this small project.
+
+### Frameworks
+
+The project uses a small custom Python architecture with optional LangChain helpers and a Streamlit UI. This keeps the pipeline readable while still satisfying ingestion, chunking, embeddings, vector storage, semantic retrieval, grounded generation, source attribution, evaluation, and documentation requirements.
+
+LangChain and LlamaIndex were considered because they provide many RAG utilities. A custom implementation was kept for the project flow so each stage is visible and easy to explain. Streamlit was chosen over Flask/FastAPI because the assignment needs a demonstrable query interface more than a production HTTP API.
 
 ## Design Decisions
 
-- `text-embedding-3-small` was chosen because it is fast and cost-effective for a small student-review corpus.
-- ChromaDB was chosen because it is simple to persist locally in `vectordb/` and easy to demo.
 - The retriever returns top 5 chunks so the LLM has enough evidence without flooding the prompt.
 - Smaller 500-character chunks fit short opinion-heavy reviews where individual claims about exams, grading, lectures, or office hours matter.
 - 100-character overlap preserves context when a review or theme sentence crosses a chunk boundary.
+- Metadata is attached to every chunk so answers can cite source files and professors.
+- Provider settings are explicit in `.env` so the same architecture can be run with API-hosted or local models.
 
 ## Limitations
 
@@ -106,11 +171,12 @@ The evaluation script runs five test questions when dependencies, `vectordb/`, a
 - The system cannot answer questions unsupported by those PDFs.
 - PDF extraction can leave small fragments of site metadata even after cleaning.
 - Rate My Professors reviews are subjective and may be biased or unrepresentative.
-- Building `vectordb/` and generating answers require an OpenAI API key.
+- End-to-end retrieval and generation require installing dependencies and configuring the selected providers.
 
 ## Future Improvements
 
 - Add more manually collected professor review documents.
 - Improve review-boundary detection so each review can become a cleaner unit.
 - Add reranking or source diversity constraints for broad comparison questions.
-- Add human-verified evaluation labels after running the app with a real API key.
+- Add adapters for FAISS, Qdrant, Claude, Gemini, Cohere, and Voyage.
+- Add human-verified evaluation labels after running the app with the selected model stack.

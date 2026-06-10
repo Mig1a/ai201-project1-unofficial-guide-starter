@@ -49,25 +49,109 @@ chunk_size = 500
 chunk_overlap = 100
 ```
 
-`scripts/rag.py` uses `RecursiveCharacterTextSplitter` when LangChain is installed. The chunk metadata includes source file, professor name, document type, chunk number, and total chunks.
+`scripts/rag.py` uses `RecursiveCharacterTextSplitter` when LangChain is installed and falls back to a simple overlapping character splitter when it is not. The chunk metadata includes source file, professor name, document type, chunk number, and total chunks.
 
 Student reviews are short, opinion-heavy, and topic-specific. Smaller chunks help the retriever find precise evidence about feedback, grading, exams, lecture clarity, organization, or office hours. The overlap preserves context across review boundaries.
+
+Alternatives considered:
+
+- Larger chunks: better global context but weaker precision for short review claims.
+- Review-level chunks: cleaner if review boundaries are reliable, but PDF extraction does not preserve those boundaries consistently.
+- Token-based splitting: useful for strict model context budgeting, but character-based splitting is simpler and reproducible for this small corpus.
 
 In the current processed corpus, the chunking configuration produces 160 chunks in this environment.
 
 ## Embedding Model Choice
 
-The embedding model is OpenAI `text-embedding-3-small`.
+The assignment does not require a specific embedding provider. The implementation is configurable with `EMBEDDING_PROVIDER` and `EMBEDDING_MODEL`.
 
-This is a good fit for the project because it balances cost, speed, and quality. A larger model such as `text-embedding-3-large` may improve retrieval quality, especially for subtle comparison questions, but it costs more and is likely unnecessary for this small corpus. A local embedding model would reduce API dependency but may produce weaker retrieval quality without tuning.
+Current default:
+
+```txt
+EMBEDDING_PROVIDER=openai
+EMBEDDING_MODEL=text-embedding-3-small
+```
+
+Why this default was chosen: it is fast, inexpensive, and strong enough for a small English review corpus. The corpus is short and mostly natural-language opinion text, so a general-purpose embedding model is appropriate.
+
+Alternatives considered:
+
+- Sentence Transformers: local, reproducible, no API cost, but requires model downloads and local compute.
+- BGE models: strong retrieval quality, good local option, more setup and disk use.
+- E5 models: strong query/document retrieval framing, good local option, requires prompt-format care.
+- Cohere embeddings: strong hosted retrieval models, API dependency and cost.
+- Voyage embeddings: high retrieval quality, API dependency and cost.
+
+Production tradeoffs:
+
+- Cost: local models avoid per-call fees; hosted APIs charge by usage.
+- Retrieval quality: larger or retrieval-specialized models can improve subtle comparisons.
+- Multilingual support: not critical for this English corpus, but important if multilingual reviews are added.
+- Local vs API: local improves privacy and offline reproducibility; API models simplify setup and often improve quality.
+- Performance: local latency depends on hardware; hosted latency depends on network and provider.
 
 ## Vector Database Choice
 
-The vector store is ChromaDB persisted to `vectordb/`. ChromaDB is simple to run locally, easy to reset during development, and appropriate for a class project demo.
+The assignment does not require a specific vector database. The implementation is configurable with `VECTOR_STORE`.
+
+Current default:
+
+```txt
+VECTOR_STORE=chroma
+```
+
+Why this default was chosen: ChromaDB is easy to persist locally in `vectordb/`, simple to reset, and appropriate for a small demo corpus.
+
+Alternatives considered:
+
+- FAISS: fast and lightweight for local search, but requires more custom metadata persistence.
+- Pinecone: hosted and scalable, but adds external service setup and cost.
+- Weaviate: production-oriented with rich metadata and hybrid search, but heavier operationally.
+- Qdrant: strong vector database with local and hosted options, but more setup than needed here.
+
+Production tradeoffs:
+
+- Local stores are easier for reproducibility and demos.
+- Hosted stores are better for scale, monitoring, backups, concurrent users, and access control.
+- Metadata support matters because every answer must cite source documents.
 
 ## Retrieval Strategy
 
-For each query, the system embeds the question and retrieves the top 5 semantically similar chunks from ChromaDB. The UI shows those retrieved chunks and metadata so the evidence trail is visible.
+For each query, the system embeds the question and retrieves the top 5 semantically similar chunks from the configured vector store. The UI shows those retrieved chunks and metadata so the evidence trail is visible.
+
+Top 5 balances answer coverage and prompt size. Fewer chunks can miss comparison evidence; many more chunks can dilute the prompt and make citations harder to inspect.
+
+## LLM Choice
+
+The assignment does not require a specific LLM. The implementation is configurable with `LLM_PROVIDER` and `LLM_MODEL`.
+
+Current default:
+
+```txt
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4o-mini
+```
+
+Why this default was chosen: it is affordable, responsive, and good at following structured grounding and citation instructions for a class demo.
+
+Alternatives considered:
+
+- Gemini: strong general model quality, API dependency.
+- Claude: strong instruction following and synthesis, API dependency.
+- Ollama: local and private, but quality/speed depend on hardware and selected model.
+- Local HuggingFace models: maximum control and offline operation, but more setup and likely more prompt-tuning.
+
+Production tradeoffs:
+
+- API models simplify deployment but create cost, privacy, and vendor-dependency concerns.
+- Local models reduce data-sharing concerns but require hardware, monitoring, and model maintenance.
+- Stronger models may handle mixed or conflicting reviews better, but the grounding prompt and retrieval quality matter more than raw model size.
+
+## Framework Choice
+
+The solution may use LangChain, LlamaIndex, or custom Python. This implementation uses custom Python orchestration with optional LangChain helpers for splitting and provider wrappers. That keeps each RAG stage visible for grading while still using proven library components where useful.
+
+The query interface may be Streamlit, Flask, FastAPI, notebook, or CLI. This implementation uses Streamlit because it is quick to demo and naturally supports input, answer output, source lists, and expandable retrieved chunks.
 
 ## Grounding Strategy
 

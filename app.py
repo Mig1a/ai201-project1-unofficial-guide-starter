@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from scripts.rag import answer_question
+from scripts.rag import answer_question, setting
 
 
 st.set_page_config(page_title="The Unofficial Guide", page_icon="?", layout="wide")
@@ -12,7 +12,7 @@ st.caption("GMU Computer Science professor review Q&A grounded only in the manua
 st.warning("Answers are based only on the processed Rate My Professors PDF documents in this project.")
 
 question = st.text_input("Ask a question", placeholder="Which professor gives useful feedback?")
-model = st.selectbox("Chat model", ["gpt-4o-mini"], index=0)
+model = st.text_input("LLM model", value=setting("LLM_MODEL", "gpt-4o-mini"))
 
 if st.button("Submit", type="primary"):
     if not question.strip():
@@ -20,7 +20,7 @@ if st.button("Submit", type="primary"):
     else:
         with st.spinner("Retrieving evidence and generating a grounded answer..."):
             try:
-                result = answer_question(question.strip(), model=model)
+                result = answer_question(question.strip(), model=model.strip() or None)
             except Exception as exc:
                 st.error(str(exc))
             else:

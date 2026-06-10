@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import json
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -16,15 +18,37 @@ CHUNK_OVERLAP = 100
 TOP_K = 5
 
 
-def require_openai_key() -> None:
+def load_environment() -> None:
     try:
         from dotenv import load_dotenv
     except ImportError:
         load_dotenv = None
     if load_dotenv:
         load_dotenv(PROJECT_ROOT / ".env")
-    if not os.getenv("OPENAI_API_KEY"):
-        raise RuntimeError("OPENAI_API_KEY is missing. Copy .env.example to .env and add your key.")
+        return
+
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+def setting(name: str, default: str) -> str:
+    load_environment()
+    return os.getenv(name, default).strip()
+
+
+def require_api_key(provider: str) -> None:
+    key_name = f"{provider.upper()}_API_KEY"
+    if not os.getenv(key_name):
+        raise RuntimeError(
+            f"{key_name} is missing. Copy .env.example to .env and add the key, "
+            f"or choose a local provider in .env."
+        )
 
 
 def professor_from_filename(path: Path) -> str:
@@ -101,23 +125,70 @@ def split_documents() -> tuple[list[str], list[dict[str, Any]], list[str]]:
 
 
 def get_collection():
+    vector_store = setting("VECTOR_STORE", "chroma").lower()
+    if vector_store != "chroma":
+        raise RuntimeError(
+            f"VECTOR_STORE={vector_store} is configured, but this implementation currently "
+            "includes only the ChromaDB adapter. Add a FAISS, Qdrant, Pinecone, or Weaviate "
+            "adapter before using that setting."
+        )
     import chromadb
 
     client = chromadb.PersistentClient(path=str(VECTORDB_DIR))
     return client.get_or_create_collection(name=COLLECTION_NAME)
 
 
-def build_vector_store(reset: bool = True) -> int:
-    from langchain_openai import OpenAIEmbeddings
+def embed_documents(texts: list[str]) -> list[list[float]]:
+    provider = setting("EMBEDDING_PROVIDER", "openai").lower()
+    model = setting("EMBEDDING_MODEL", "text-embedding-3-small")
 
-    require_openai_key()
+    if provider == "openai":
+        require_api_key("openai")
+        from langchain_openai import OpenAIEmbeddings
+
+        return OpenAIEmbeddings(model=model).embed_documents(texts)
+
+    if provider in {"sentence_transformers", "sentence-transformers", "local"}:
+        from sentence_transformers import SentenceTransformer
+
+        encoder = SentenceTransformer(model)
+        return encoder.encode(texts, normalize_embeddings=True).tolist()
+
+    raise RuntimeError(
+        f"Unsupported EMBEDDING_PROVIDER={provider}. Supported providers in this "
+        "implementation are openai and sentence_transformers."
+    )
+
+
+def embed_query(query: str) -> list[float]:
+    provider = setting("EMBEDDING_PROVIDER", "openai").lower()
+    model = setting("EMBEDDING_MODEL", "text-embedding-3-small")
+
+    if provider == "openai":
+        require_api_key("openai")
+        from langchain_openai import OpenAIEmbeddings
+
+        return OpenAIEmbeddings(model=model).embed_query(query)
+
+    if provider in {"sentence_transformers", "sentence-transformers", "local"}:
+        from sentence_transformers import SentenceTransformer
+
+        encoder = SentenceTransformer(model)
+        return encoder.encode(query, normalize_embeddings=True).tolist()
+
+    raise RuntimeError(
+        f"Unsupported EMBEDDING_PROVIDER={provider}. Supported providers in this "
+        "implementation are openai and sentence_transformers."
+    )
+
+
+def build_vector_store(reset: bool = True) -> int:
     if reset and VECTORDB_DIR.exists():
         shutil.rmtree(VECTORDB_DIR)
     VECTORDB_DIR.mkdir(parents=True, exist_ok=True)
 
     texts, metadatas, ids = split_documents()
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-    vectors = embeddings.embed_documents(texts)
+    vectors = embed_documents(texts)
 
     collection = get_collection()
     collection.add(ids=ids, documents=texts, metadatas=metadatas, embeddings=vectors)
@@ -125,13 +196,9 @@ def build_vector_store(reset: bool = True) -> int:
 
 
 def retrieve(query: str, top_k: int = TOP_K) -> list[dict[str, Any]]:
-    from langchain_openai import OpenAIEmbeddings
-
-    require_openai_key()
     if not VECTORDB_DIR.exists():
         raise RuntimeError("vectordb/ does not exist. Run `python scripts/embed.py` first.")
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-    query_vector = embeddings.embed_query(query)
+    query_vector = embed_query(query)
     collection = get_collection()
     result = collection.query(
         query_embeddings=[query_vector],
@@ -158,25 +225,57 @@ def build_context(chunks: list[dict[str, Any]]) -> str:
     return "\n\n".join(lines)
 
 
-def answer_question(query: str, model: str = "gpt-4o-mini") -> dict[str, Any]:
-    from langchain_openai import ChatOpenAI
+def grounded_prompt(query: str, context: str) -> str:
+    return (
+        "You answer questions about GMU Computer Science professors using only the retrieved "
+        "student review context. Do not use outside knowledge. Do not invent claims. If the "
+        "retrieved context is insufficient, say there is not enough information. Cite professor "
+        "and document names. Mention mixed or polarized evidence when the retrieved reviews "
+        "conflict. Use this exact structure:\n\nAnswer:\n[Grounded answer]\n\nEvidence:\n"
+        "- [Short cited evidence from source/chunk]\n\nSources:\n- [source file]\n\n"
+        f"Question: {query}\n\nRetrieved context:\n{context}"
+    )
 
+
+def generate_answer(query: str, context: str, model: str | None = None) -> str:
+    provider = setting("LLM_PROVIDER", "openai").lower()
+    selected_model = model or setting("LLM_MODEL", "gpt-4o-mini")
+    prompt = grounded_prompt(query, context)
+
+    if provider == "openai":
+        require_api_key("openai")
+        from langchain_openai import ChatOpenAI
+
+        llm = ChatOpenAI(model=selected_model, temperature=0)
+        response = llm.invoke(
+            [
+                ("system", "Follow the user's grounding and citation instructions exactly."),
+                ("human", prompt),
+            ]
+        )
+        return response.content
+
+    if provider == "ollama":
+        payload = json.dumps({"model": selected_model, "prompt": prompt, "stream": False}).encode("utf-8")
+        request = urllib.request.Request(
+            setting("OLLAMA_URL", "http://localhost:11434/api/generate"),
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=120) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        return data.get("response", "")
+
+    raise RuntimeError(
+        f"Unsupported LLM_PROVIDER={provider}. Supported providers in this implementation "
+        "are openai and ollama."
+    )
+
+
+def answer_question(query: str, model: str | None = None) -> dict[str, Any]:
     chunks = retrieve(query, top_k=TOP_K)
     context = build_context(chunks)
     sources = sorted({chunk["metadata"]["source_file"] for chunk in chunks})
-
-    llm = ChatOpenAI(model=model, temperature=0)
-    messages = [
-        (
-            "system",
-            "You answer questions about GMU Computer Science professors using only the retrieved "
-            "student review context. Do not use outside knowledge. Do not invent claims. If the "
-            "retrieved context is insufficient, say there is not enough information. Cite professor "
-            "and document names. Mention mixed or polarized evidence when the retrieved reviews "
-            "conflict. Use this exact structure:\n\nAnswer:\n[Grounded answer]\n\nEvidence:\n"
-            "- [Short cited evidence from source/chunk]\n\nSources:\n- [source file]",
-        ),
-        ("human", f"Question: {query}\n\nRetrieved context:\n{context}"),
-    ]
-    response = llm.invoke(messages)
-    return {"answer": response.content, "chunks": chunks, "sources": sources}
+    answer = generate_answer(query, context, model=model)
+    return {"answer": answer, "chunks": chunks, "sources": sources}

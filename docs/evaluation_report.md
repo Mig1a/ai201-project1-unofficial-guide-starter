@@ -1,6 +1,6 @@
 # Evaluation Report
 
-This report defines the required five-question evaluation. Generated answers were not auto-filled in this environment because the vector database and OpenAI calls require installed dependencies and `OPENAI_API_KEY`. Running `python scripts/evaluate.py` currently reports the missing package blocker cleanly.
+This report defines the required five-question evaluation. Generated answers were not auto-filled in this environment because end-to-end retrieval and generation require installing the selected provider dependencies, building the vector store, and configuring the selected model credentials or local model runtime. Running `python scripts/evaluate.py` currently reports the missing setup blocker cleanly.
 
 | # | Question | Ground-truth answer | Generated system answer | Retrieved chunks | Retrieved source files | Retrieval accuracy | Response accuracy | Notes |
 |---|----------|---------------------|-------------------------|------------------|------------------------|--------------------|-------------------|-------|
@@ -16,4 +16,4 @@ A likely failure case is a broad ranking question such as "Who is the most begin
 
 ## Setup Note
 
-In this workspace, installing the full Streamlit, ChromaDB, and LangChain stack failed because the runtime ran out of disk space during package download. The ingestion pipeline, processed corpus, evaluation script fallback path, and Python syntax were verified locally. End-to-end generated answers should be run after installing `requirements.txt`, setting `OPENAI_API_KEY`, and building `vectordb/`.
+In this workspace, installing the full demo dependency stack failed because the runtime ran out of disk space during package download. The ingestion pipeline, processed corpus, evaluation script fallback path, and Python syntax were verified locally. End-to-end generated answers should be run after installing `requirements.txt`, selecting providers in `.env`, configuring any required API keys or local model servers, and building `vectordb/`.

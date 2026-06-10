@@ -8,3 +8,6 @@ langchain-text-splitters>=0.3.0
 chromadb>=0.6.0
 tiktoken>=0.7.0
 pandas>=2.2.0
+
+# Optional local embedding provider:
+# sentence-transformers>=3.4.1
