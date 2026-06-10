@@ -1,162 +1,116 @@
-# The Unofficial Guide — Project 1
+# The Unofficial Guide
 
-> **How to use this template:**
-> Complete each section *after* you've built and tested the corresponding part of your system.
-> Do not write placeholder text — if a section isn't done yet, leave it blank and come back.
-> Every section below is required for submission. One-liners will not receive full credit.
+The Unofficial Guide is a production-style RAG system for asking plain-language questions about George Mason University Computer Science professors using student review documents.
 
----
+The domain is GMU CS professor student reviews. Rate My Professors is only the collection source for the manually saved PDFs; the system does not scrape Rate My Professors or use outside professor knowledge.
 
-## Domain
+## Project Overview
 
-<!-- What topic or category of knowledge does your system cover?
-     Why is this knowledge valuable, and why is it hard to find through official channels?
-     Example: "Student reviews of CS professors at [university] — useful because official
-     course descriptions don't reflect teaching style, exam difficulty, or workload." -->
+Students can ask questions such as:
 
----
+- Which professor gives useful feedback?
+- Which professor explains difficult CS concepts clearly?
+- Which professor has the hardest exams?
+- Which professor is described as disorganized?
+- Which professor has mixed or polarized reviews?
+- Which professor has reviews recommending office hours?
 
-## Document Sources
+The answer generator is instructed to use only retrieved chunks from the processed documents and cite the professor/document sources used.
 
-<!-- List every source you collected documents from.
-     Be specific: include URLs, subreddit names, forum thread titles, or file names.
-     Aim for variety — sources that together cover different subtopics or perspectives. -->
+## Data Source
 
-| # | Source | Type | URL or file path |
-|---|--------|------|-----------------|
-| 1 | | | |
-| 2 | | | |
-| 3 | | | |
-| 4 | | | |
-| 5 | | | |
-| 6 | | | |
-| 7 | | | |
-| 8 | | | |
-| 9 | | | |
-| 10 | | | |
+The raw PDFs were manually collected from Rate My Professors and saved into `data/raw/`.
 
----
+| # | Processed document | Type | Source PDF |
+|---|--------------------|------|------------|
+| 1 | `ahmed_zaman_reviews.md` | cleaned reviews | Ahmed Zaman PDF |
+| 2 | `ahmed_zaman_summary.md` | generated theme summary | Ahmed Zaman PDF |
+| 3 | `sanjeev_setia_reviews.md` | cleaned reviews | Sanjeev Setia PDF |
+| 4 | `sanjeev_setia_summary.md` | generated theme summary | Sanjeev Setia PDF |
+| 5 | `jana_kosecka_reviews.md` | cleaned reviews | Jana Kosecka PDF |
+| 6 | `jana_kosecka_summary.md` | generated theme summary | Jana Kosecka PDF |
+| 7 | `alexander_laufer_reviews.md` | cleaned reviews | Alexander Laufer PDF |
+| 8 | `alexander_laufer_summary.md` | generated theme summary | Alexander Laufer PDF |
+| 9 | `wes_masri_reviews.md` | cleaned reviews | Wassim (Wes) Masri PDF |
+| 10 | `wes_masri_summary.md` | generated theme summary | Wassim (Wes) Masri PDF |
 
-## Chunking Strategy
+The summary documents are generated from extracted review text only. They organize evidence around lecture clarity, difficulty, grading style, exams/quizzes, office hours/helpfulness, organization, workload, and student sentiment.
 
-<!-- Describe your chunking approach with enough specificity that someone else could reproduce it.
-     Include:
-     - Chunk size (characters or tokens) and why that size fits your documents
-     - Overlap size and why (or why not) you used overlap
-     - Any preprocessing you did before chunking (e.g., stripping HTML, removing headers)
-     - What your final chunk count was across all documents -->
+## Setup
 
-**Chunk size:**
+Use Python 3.12.
 
-**Overlap:**
+```bash
+pip install -r requirements.txt
+cp .env.example .env
+```
 
-**Why these choices fit your documents:**
+Then edit `.env`:
 
-**Final chunk count:**
+```txt
+OPENAI_API_KEY=your_key_here
+```
 
----
+## Run Ingestion
 
-## Embedding Model
+The ingestion pipeline loads PDFs from `data/raw/`, extracts text, removes obvious page noise, and writes cleaned review and summary files to `data/processed/`.
 
-<!-- Name the embedding model you used and explain your choice.
-     Then answer: if you were deploying this system for real users and cost wasn't a constraint,
-     what tradeoffs would you weigh in choosing a different model?
-     Consider: context length limits, multilingual support, accuracy on domain-specific text,
-     latency, and local vs. API-hosted. -->
+```bash
+python scripts/ingest.py
+```
 
-**Model used:**
+Expected output: 5 raw PDFs become 10 processed Markdown documents.
 
-**Production tradeoff reflection:**
+## Build Embeddings
 
----
+The embedding pipeline chunks processed documents with:
 
-## Grounded Generation
+```python
+chunk_size = 500
+chunk_overlap = 100
+```
 
-<!-- Explain how your system enforces grounding — how does it prevent the LLM from answering
-     beyond the retrieved documents?
-     Describe both your system prompt (what instruction you gave the model) and any structural
-     choices (e.g., how you formatted the context, whether you filtered low-relevance chunks).
-     Do not just say "I told it to use the documents" — show the actual instruction or explain
-     the mechanism. -->
+It uses `RecursiveCharacterTextSplitter`, embeds chunks with OpenAI `text-embedding-3-small`, and persists the ChromaDB vector database to `vectordb/`.
 
-**System prompt grounding instruction:**
+```bash
+python scripts/embed.py
+```
 
-**How source attribution is surfaced in the response:**
+## Run The App
 
----
+```bash
+streamlit run app.py
+```
 
-## Evaluation Report
+The interface includes a question input, generated answer, cited source list, retrieved chunk expanders, and a warning that answers are based only on the collected review documents.
 
-<!-- Run your 5 test questions from planning.md through your system and record the results.
-     Be honest — a partially accurate or inaccurate result that you explain well is more
-     valuable than a suspiciously perfect result. -->
+## Run Evaluation
 
-| # | Question | Expected answer | System response (summarized) | Retrieval quality | Response accuracy |
-|---|----------|-----------------|------------------------------|-------------------|-------------------|
-| 1 | | | | | |
-| 2 | | | | | |
-| 3 | | | | | |
-| 4 | | | | | |
-| 5 | | | | | |
+```bash
+python scripts/evaluate.py
+```
 
-**Retrieval quality:** Relevant / Partially relevant / Off-target  
-**Response accuracy:** Accurate / Partially accurate / Inaccurate
+The evaluation script runs five test questions when dependencies, `vectordb/`, and `OPENAI_API_KEY` are available. If setup is incomplete, it still writes `docs/evaluation_report.md` with the test cases and the blocking setup error.
 
----
+## Design Decisions
 
-## Failure Case Analysis
+- `text-embedding-3-small` was chosen because it is fast and cost-effective for a small student-review corpus.
+- ChromaDB was chosen because it is simple to persist locally in `vectordb/` and easy to demo.
+- The retriever returns top 5 chunks so the LLM has enough evidence without flooding the prompt.
+- Smaller 500-character chunks fit short opinion-heavy reviews where individual claims about exams, grading, lectures, or office hours matter.
+- 100-character overlap preserves context when a review or theme sentence crosses a chunk boundary.
 
-<!-- Identify at least one question where retrieval or generation did not work as expected.
-     Write a specific explanation of *why* it failed, tied to a part of the pipeline.
+## Limitations
 
-     "The answer was wrong" is not an explanation.
+- The corpus covers only five manually collected Rate My Professors PDF pages.
+- The system cannot answer questions unsupported by those PDFs.
+- PDF extraction can leave small fragments of site metadata even after cleaning.
+- Rate My Professors reviews are subjective and may be biased or unrepresentative.
+- Building `vectordb/` and generating answers require an OpenAI API key.
 
-     "The relevant information was split across a chunk boundary, so retrieval returned
-     only half the context — the model didn't have enough to answer correctly" is an explanation.
+## Future Improvements
 
-     "The embedding model treated the professor's nickname as out-of-vocabulary and returned
-     results from an unrelated review" is an explanation. -->
-
-**Question that failed:**
-
-**What the system returned:**
-
-**Root cause (tied to a specific pipeline stage):**
-
-**What you would change to fix it:**
-
----
-
-## Spec Reflection
-
-<!-- Reflect on how planning.md shaped your implementation.
-     Answer both questions with at least 2–3 sentences each. -->
-
-**One way the spec helped you during implementation:**
-
-**One way your implementation diverged from the spec, and why:**
-
----
-
-## AI Usage
-
-<!-- Describe at least 2 specific instances where you used an AI tool during this project.
-     For each: what did you give the AI as input, what did it produce, and what did you
-     change, override, or direct differently?
-
-     "I used Claude to help me code" is not sufficient.
-     "I gave Claude my Chunking Strategy section from planning.md and asked it to implement
-     chunk_text(). It returned a function using a fixed character split. I overrode the
-     chunk size from 500 to 200 because my documents are short reviews, not long guides." -->
-
-**Instance 1**
-
-- *What I gave the AI:*
-- *What it produced:*
-- *What I changed or overrode:*
-
-**Instance 2**
-
-- *What I gave the AI:*
-- *What it produced:*
-- *What I changed or overrode:*
+- Add more manually collected professor review documents.
+- Improve review-boundary detection so each review can become a cleaner unit.
+- Add reranking or source diversity constraints for broad comparison questions.
+- Add human-verified evaluation labels after running the app with a real API key.

@@ -1,4 +1,4 @@
-# API keys — never commit these
+# API keys - never commit these
 .env
 
 # Python
@@ -15,6 +15,8 @@ env/
 # ChromaDB local storage
 chroma_db/
 chroma/
+vectordb/*
+!vectordb/.gitkeep
 
-# macOS
+# OS files
 .DS_Store
